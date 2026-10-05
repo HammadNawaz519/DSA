@@ -60,6 +60,75 @@ struct PendingPatch
     string targetFuncName;
 };
 
+struct TimelineNode
+{
+    Snapshot *data;
+    TimelineNode *next;
+    TimelineNode *prev;
+};
+
+class Timeline
+{
+    TimelineNode *head, *tail;
+    int32_t stepCount;
+
+public:
+    Timeline()
+    {
+        head = nullptr;
+        tail = nullptr;
+        stepCount = 0;
+    }
+
+    ~Timeline()
+    {
+        TimelineNode *curr_node = head;
+        while (curr_node)
+        {
+            TimelineNode *next_node = curr_node->next;
+            delete curr_node->data;
+            delete curr_node;
+            curr_node = next_node;
+        }
+    }
+
+    void record(Snapshot *s)
+    {
+        TimelineNode *new_node = new TimelineNode();
+        new_node->data = new Snapshot(*s);
+        new_node->next = nullptr;
+        new_node->prev = tail;
+        if (tail)
+        {
+            tail->next = new_node;
+        }
+        else
+        {
+            head = new_node;
+        }
+        tail = new_node;
+        stepCount++;
+    }
+
+    TimelineNode *begin()
+    {
+        return head;
+    }
+
+    int32_t getStepCount()
+    {
+        return stepCount;
+    }
+};
+
+struct TTDBHeader
+{
+    char magic[4];
+    int32_t version;
+    int32_t stepCount;
+    int64_t indexOffset;
+};
+
 int main()
 {
     return 0;
