@@ -129,6 +129,76 @@ struct TTDBHeader
     int64_t indexOffset;
 };
 
+bool validate_structural_integrity(const string &source_path)
+{
+    ifstream input_file(source_path);
+    if (!input_file.is_open())
+    {
+        cerr << "Error: cannot open source file " << source_path << endl;
+        return false;
+    }
+
+    vector<string> func_stack;
+    string raw_line;
+    int line_num = 0;
+
+    while (getline(input_file, raw_line))
+    {
+        line_num++;
+        size_t first_non_space = raw_line.find_first_not_of(" \t\r\n");
+        if (first_non_space == string::npos)
+        {
+            continue;
+        }
+
+        stringstream line_stream(raw_line);
+        string first_word;
+        line_stream >> first_word;
+
+        if (first_word == "func")
+        {
+            if (!func_stack.empty())
+            {
+                cerr << "Structural error at line " << line_num << ": nested function declaration rejected." << endl;
+                return false;
+            }
+            string current_func_name;
+            line_stream >> current_func_name;
+            if (current_func_name.empty())
+            {
+                cerr << "Structural error at line " << line_num << ": missing function name." << endl;
+                return false;
+            }
+            func_stack.push_back(current_func_name);
+        }
+        else if (first_word == "func_end")
+        {
+            if (func_stack.empty())
+            {
+                cerr << "Structural error at line " << line_num << ": unmatched func_end." << endl;
+                return false;
+            }
+            func_stack.pop_back();
+        }
+        else
+        {
+            if (func_stack.empty())
+            {
+                cerr << "Structural error at line " << line_num << ": instruction outside of function declaration." << endl;
+                return false;
+            }
+        }
+    }
+
+    if (!func_stack.empty())
+    {
+        cerr << "Structural error: unclosed function at end of file: " << func_stack.back() << endl;
+        return false;
+    }
+
+    return true;
+}
+
 int main()
 {
     return 0;

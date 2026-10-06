@@ -14,11 +14,18 @@ Created the base files: Makefile, .gitignore, README, and an empty server source
 ## Oct 1, 2026 — Session 2
 **Defined core data structures**
 
-Added all the fundamental structs the project needs: `Token`, `Variable`, `Frame`, `Snapshot`, `FuncEntry`, and `PendingPatch`. Also added the `TokenType` enum and the two constants.
+Added all the fundamental structs the project needs: `Token`, `Variable`, `Frame`, `Snapshot`, `FuncEntry`, and `PendingPatch`.
 
 ---
 
 ## Oct 2, 2026 — Session 1
 **Built the Timeline — the backbone of time-travel**
 
-Added `TimelineNode` and the `Timeline` class. It's a doubly-linked list where each node stores a full `Snapshot`. Because it's doubly linked, you'll be able to walk forward and backward through execution history later. Also added `TTDBHeader` which defines what goes at the top of the `.tdbg` output file.
+Added `TimelineNode` and the `Timeline` class as a doubly-linked list. Also added `TTDBHeader`.
+
+---
+
+## Oct 2, 2026 — Session 2
+**Stage 1: Structural validation**
+
+Implemented `validate_structural_integrity()`. Before touching anything else, the server has to verify the source file is well-formed. This function checks that every `func` has a matching `func_end`, there are no nested function declarations, no instructions appear outside a function, and no function is left open at end of file. Any violation prints a descriptive error with the line number and returns false.
