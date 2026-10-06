@@ -297,6 +297,72 @@ bool generate_resolve_bin(const string &source_path, const string &resolve_path,
             current_offset = current_offset + 8 + 4 + str_size;
         }
 
+int64_t patch_resolve_bin(const string &resolve_path, const vector<FuncEntry> &func_table, const vector<PendingPatch> &pending_patches)
+{
+    FILE *patch_file = fopen(resolve_path.c_str(), "r+b");
+    if (!patch_file)
+    {
+        cerr << "Error: cannot open " << resolve_path << " for patching" << endl;
+        return -1;
+    }
+
+    for (size_t patch_idx = 0; patch_idx < pending_patches.size(); patch_idx++)
+    {
+        const PendingPatch &curr_patch = pending_patches[patch_idx];
+        bool func_found = false;
+        int64_t target_offset = 0;
+
+        for (size_t entry_idx = 0; entry_idx < func_table.size(); entry_idx++)
+        {
+            if (func_table[entry_idx].funcName == curr_patch.targetFuncName)
+            {
+                func_found = true;
+                target_offset = func_table[entry_idx].byteOffsetInResolveBin;
+                break;
+            }
+        }
+
+        if (!func_found)
+        {
+            cerr << "Error: call to undefined function: " << curr_patch.targetFuncName << endl;
+            fclose(patch_file);
+            return -1;
+        }
+
+        char hex_buf[32];
+        snprintf(hex_buf, sizeof(hex_buf), "0x%016lx", (unsigned long)target_offset);
+
+        if (fseek(patch_file, curr_patch.byteOffsetOfOffsetField, SEEK_SET) != 0)
+        {
+            cerr << "Error: failed to seek to patch location" << endl;
+            fclose(patch_file);
+            return -1;
+        }
+
+        fwrite(hex_buf, 1, 18, patch_file);
+    }
+
+    fclose(patch_file);
+
+    int64_t main_offset = -1;
+    for (size_t entry_idx = 0; entry_idx < func_table.size(); entry_idx++)
+    {
+        if (func_table[entry_idx].funcName == "main")
+        {
+            main_offset = func_table[entry_idx].byteOffsetInResolveBin;
+            break;
+        }
+    }
+
+    if (main_offset == -1)
+    {
+        cerr << "Error: main function does not exist." << endl;
+        return -1;
+    }
+
+    return main_offset;
+}
+
 int main()
 {
     return 0;
