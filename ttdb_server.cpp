@@ -203,3 +203,101 @@ int main()
 {
     return 0;
 }
+
+bool generate_resolve_bin(const string &source_path, const string &resolve_path, vector<FuncEntry> &func_table, vector<PendingPatch> &pending_patches)
+{
+    ifstream input_file(source_path);
+    if (!input_file.is_open())
+    {
+        cerr << "Error: cannot open " << source_path << endl;
+        return false;
+    }
+
+    FILE *out_file = fopen(resolve_path.c_str(), "wb");
+    if (!out_file)
+    {
+        cerr << "Error: cannot create " << resolve_path << endl;
+        return false;
+    }
+
+    int64_t current_offset = 0;
+    string raw_line;
+
+    while (getline(input_file, raw_line))
+    {
+        size_t first_idx = raw_line.find_first_not_of(" \t\r\n");
+        if (first_idx == string::npos)
+        {
+            continue;
+        }
+        size_t last_idx = raw_line.find_last_not_of(" \t\r\n");
+        string clean_line = raw_line.substr(first_idx, last_idx - first_idx + 1);
+
+        stringstream line_stream(clean_line);
+        string first_word;
+        line_stream >> first_word;
+
+        if (first_word == "func")
+        {
+            string current_func_name;
+            line_stream >> current_func_name;
+
+            FuncEntry entry;
+            entry.funcName = current_func_name;
+            entry.byteOffsetInResolveBin = current_offset;
+            func_table.push_back(entry);
+
+            int32_t str_size = clean_line.size();
+            fwrite(&current_offset, sizeof(int64_t), 1, out_file);
+            fwrite(&str_size, sizeof(int32_t), 1, out_file);
+            fwrite(clean_line.data(), 1, str_size, out_file);
+            current_offset = current_offset + 8 + 4 + str_size;
+        }
+        else if (first_word == "call")
+        {
+            string target_func;
+            line_stream >> target_func;
+
+            string rest_of_line;
+            string rem_token;
+            while (line_stream >> rem_token)
+            {
+                if (!rest_of_line.empty())
+                {
+                    rest_of_line += " ";
+                }
+                rest_of_line += rem_token;
+            }
+
+            string hex_placeholder = "0x0000000000000000";
+            string formatted_line = "call " + hex_placeholder;
+            if (!rest_of_line.empty())
+            {
+                formatted_line += " " + rest_of_line;
+            }
+
+            int64_t patch_offset = current_offset + 8 + 4 + 5;
+            PendingPatch patch_record;
+            patch_record.byteOffsetOfOffsetField = patch_offset;
+            patch_record.targetFuncName = target_func;
+            pending_patches.push_back(patch_record);
+
+            int32_t str_size = formatted_line.size();
+            fwrite(&current_offset, sizeof(int64_t), 1, out_file);
+            fwrite(&str_size, sizeof(int32_t), 1, out_file);
+            fwrite(formatted_line.data(), 1, str_size, out_file);
+            current_offset = current_offset + 8 + 4 + str_size;
+        }
+        else
+        {
+            int32_t str_size = clean_line.size();
+            fwrite(&current_offset, sizeof(int64_t), 1, out_file);
+            fwrite(&str_size, sizeof(int32_t), 1, out_file);
+            fwrite(clean_line.data(), 1, str_size, out_file);
+            current_offset = current_offset + 8 + 4 + str_size;
+        }
+
+int main()
+{
+    return 0;
+}

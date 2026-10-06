@@ -28,4 +28,11 @@ Added `TimelineNode` and the `Timeline` class as a doubly-linked list. Also adde
 ## Oct 2, 2026 — Session 2
 **Stage 1: Structural validation**
 
-Implemented `validate_structural_integrity()`. Before touching anything else, the server has to verify the source file is well-formed. This function checks that every `func` has a matching `func_end`, there are no nested function declarations, no instructions appear outside a function, and no function is left open at end of file. Any violation prints a descriptive error with the line number and returns false.
+Implemented `validate_structural_integrity()`. Checks that every `func` has a matching `func_end`, no nested functions, no stray instructions.
+
+---
+
+## Oct 2, 2026 — Session 3
+**Stage 2: Generate the resolve binary**
+
+Implemented `generate_resolve_bin()`. This reads through the source file and writes every instruction into `resolve.bin` as a binary record — each record has a byte offset, a size, and the raw line text. For `func` instructions it records the function's position in the function table. For `call` instructions it writes a hex placeholder `0x0000000000000000` where the real address will go, and registers it as a `PendingPatch`. Everything else is written as-is.
