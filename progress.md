@@ -11,12 +11,11 @@ Tracking my progress building the Time-Travel Debugger server from scratch.
 ## Oct 2 · Session 3 — Stage 2: Resolve binary generation
 ## Oct 3 · Session 1 — Patch call addresses
 ## Oct 3 · Session 2 — Tokenizer and variable helpers
+## Oct 3 · Session 3 — Stage 3: Execution engine
 
 ---
 
-## Oct 3, 2026 — Session 3
-**Stage 3: The execution engine — this is the big one**
+## Oct 4, 2026 — Session 1
+**Stage 4: Serialize the timeline to .tdbg**
 
-Added `read_record()` first, which seeks to a byte position in `resolve.bin` and reads one record back as a string. Then implemented the full `execute_program()`. It opens `resolve.bin`, initialises the call stack with a `main` frame, records that as step 0, then loops reading one instruction at a time.
-
-For each instruction it dispatches based on the keyword: `set` evaluates the right-hand side and writes it to the frame, `add`/`sub`/`mul`/`div` read both operands and store the result, `call` pushes a new frame (passing evaluated argument values, saving the return address), and `func_end` pops the frame (writing back modified arguments to the caller) and jumps to the return address. After every instruction it snapshots the full call stack and appends it to the timeline. When the stack empties, execution is done.
+Implemented `writeHeader()` and `writeTdbg()`. Once execution finishes, the Timeline lives in memory. This function dumps it to disk in the exact `.tdbg` format the spec requires: TTDBHeader first (magic `TTDB`, version 1, step count, and an indexOffset that will be filled in), then all Snapshot structs written back-to-back, then the dense index array at the end. After writing the snapshots and index, it seeks back to position 0 and rewrites the header with the correct `indexOffset`. The output file is now fully seekable — a client can jump to any step in O(1) using the index.

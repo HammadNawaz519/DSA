@@ -696,6 +696,55 @@ bool execute_program(const string &resolve_path, int64_t main_offset, Timeline &
     return true;
 }
 
+void writeHeader(FILE *f, const TTDBHeader &h)
+{
+    fwrite(h.magic, 1, 4, f);
+    fwrite(&h.version, sizeof(int32_t), 1, f);
+    fwrite(&h.stepCount, sizeof(int32_t), 1, f);
+    fwrite(&h.indexOffset, sizeof(int64_t), 1, f);
+}
+
+void writeTdbg(Timeline &timeline, const char *tdbgPath)
+{
+    FILE *tdbg_file = fopen(tdbgPath, "wb");
+    if (!tdbg_file)
+    {
+        cerr << "Error: cannot open " << tdbgPath << " for serialization" << endl;
+        return;
+    }
+
+    TTDBHeader file_header;
+    file_header.magic[0] = 'T';
+    file_header.magic[1] = 'T';
+    file_header.magic[2] = 'D';
+    file_header.magic[3] = 'B';
+    file_header.version = 1;
+    file_header.stepCount = timeline.getStepCount();
+    file_header.indexOffset = 0;
+
+    writeHeader(tdbg_file, file_header);
+
+    int32_t total_steps = timeline.getStepCount();
+    int64_t *index_array = new int64_t[total_steps];
+
+    TimelineNode *curr_node = timeline.begin();
+    for (int32_t step_idx = 0; step_idx < total_steps && curr_node; step_idx++)
+    {
+        index_array[step_idx] = ftell(tdbg_file);
+        fwrite(curr_node->data, sizeof(Snapshot), 1, tdbg_file);
+        curr_node = curr_node->next;
+    }
+
+    file_header.indexOffset = ftell(tdbg_file);
+    fwrite(index_array, sizeof(int64_t), total_steps, tdbg_file);
+    delete[] index_array;
+
+    fseek(tdbg_file, 0, SEEK_SET);
+    writeHeader(tdbg_file, file_header);
+
+    fclose(tdbg_file);
+}
+
 int main()
 {
     return 0;
