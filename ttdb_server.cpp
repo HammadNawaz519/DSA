@@ -472,6 +472,230 @@ void set_variable(Frame &curr_frame, const string &target_name, int32_t new_val)
     }
 }
 
+bool read_record(FILE *file_ptr, int64_t target_pos, string &line_output, int64_t &next_pos)
+{
+    if (fseek(file_ptr, target_pos, SEEK_SET) != 0)
+    {
+        return false;
+    }
+    int64_t record_offset = 0;
+    int32_t record_size = 0;
+    if (fread(&record_offset, sizeof(int64_t), 1, file_ptr) != 1)
+    {
+        return false;
+    }
+    if (fread(&record_size, sizeof(int32_t), 1, file_ptr) != 1)
+    {
+        return false;
+    }
+    vector<char> str_buffer(record_size + 1, 0);
+    if (fread(str_buffer.data(), 1, record_size, file_ptr) != (size_t)record_size)
+    {
+        return false;
+    }
+    line_output = string(str_buffer.data(), record_size);
+    next_pos = target_pos + 8 + 4 + record_size;
+    return true;
+}
+
+bool execute_program(const string &resolve_path, int64_t main_offset, Timeline &timeline_instance)
+{
+    FILE *exec_file = fopen(resolve_path.c_str(), "rb");
+    if (!exec_file)
+    {
+        cerr << "Error: cannot open " << resolve_path << " for execution" << endl;
+        return false;
+    }
+
+    Snapshot current_snapshot;
+    current_snapshot.stackDepth = 0;
+
+    string caller_arg_names[max_stack_depth][max_vars_per_frame];
+
+    int64_t current_offset = main_offset;
+    string line_text;
+    int64_t next_offset = 0;
+
+    if (!read_record(exec_file, current_offset, line_text, next_offset))
+    {
+        cerr << "Error: failed to read main function header" << endl;
+        fclose(exec_file);
+        return false;
+    }
+
+    Frame &main_frame = current_snapshot.callStack[0];
+    main_frame.func_name = "main";
+    main_frame.argc = 0;
+    main_frame.returnLine = -1;
+    main_frame.localCount = 0;
+    current_snapshot.stackDepth = 1;
+
+    timeline_instance.record(&current_snapshot);
+    current_offset = next_offset;
+
+    while (current_snapshot.stackDepth > 0)
+    {
+        if (!read_record(exec_file, current_offset, line_text, next_offset))
+        {
+            break;
+        }
+
+        vector<Token> tokens = tokenize_line(line_text);
+        if (tokens.empty())
+        {
+            current_offset = next_offset;
+            continue;
+        }
+
+        string cmd_word = tokens[0].text;
+        Frame &curr_frame = current_snapshot.callStack[current_snapshot.stackDepth - 1];
+
+        if (cmd_word == "set")
+        {
+            if (tokens.size() >= 3)
+            {
+                string target_var = tokens[1].text;
+                int32_t evaluated_val = resolve_value(curr_frame, tokens[2].text);
+                set_variable(curr_frame, target_var, evaluated_val);
+            }
+            current_offset = next_offset;
+        }
+        else if (cmd_word == "add")
+        {
+            if (tokens.size() >= 3)
+            {
+                string dest_var = tokens[1].text;
+                int32_t val_one = resolve_value(curr_frame, dest_var);
+                int32_t val_two = resolve_value(curr_frame, tokens[2].text);
+                set_variable(curr_frame, dest_var, val_one + val_two);
+            }
+            current_offset = next_offset;
+        }
+        else if (cmd_word == "sub")
+        {
+            if (tokens.size() >= 3)
+            {
+                string dest_var = tokens[1].text;
+                int32_t val_one = resolve_value(curr_frame, dest_var);
+                int32_t val_two = resolve_value(curr_frame, tokens[2].text);
+                set_variable(curr_frame, dest_var, val_one - val_two);
+            }
+            current_offset = next_offset;
+        }
+        else if (cmd_word == "mul")
+        {
+            if (tokens.size() >= 3)
+            {
+                string dest_var = tokens[1].text;
+                int32_t val_one = resolve_value(curr_frame, dest_var);
+                int32_t val_two = resolve_value(curr_frame, tokens[2].text);
+                set_variable(curr_frame, dest_var, val_one * val_two);
+            }
+            current_offset = next_offset;
+        }
+        else if (cmd_word == "div")
+        {
+            if (tokens.size() >= 3)
+            {
+                string dest_var = tokens[1].text;
+                int32_t val_one = resolve_value(curr_frame, dest_var);
+                int32_t val_two = resolve_value(curr_frame, tokens[2].text);
+                if (val_two != 0)
+                {
+                    set_variable(curr_frame, dest_var, val_one / val_two);
+                }
+            }
+            current_offset = next_offset;
+        }
+        else if (cmd_word == "call")
+        {
+            if (tokens.size() >= 2 && current_snapshot.stackDepth < max_stack_depth)
+            {
+                int64_t target_offset = strtoll(tokens[1].text.c_str(), NULL, 0);
+
+                Frame &new_frame = current_snapshot.callStack[current_snapshot.stackDepth];
+                new_frame.returnLine = next_offset;
+                new_frame.localCount = 0;
+                new_frame.argc = 0;
+
+                int arg_count = tokens.size() - 2;
+                vector<int32_t> arg_values;
+                vector<string> arg_var_names;
+                for (int i = 0; i < arg_count && i < max_vars_per_frame; i++)
+                {
+                    arg_var_names.push_back(tokens[2 + i].text);
+                    arg_values.push_back(resolve_value(curr_frame, tokens[2 + i].text));
+                }
+
+                string target_header;
+                int64_t target_next = 0;
+                if (!read_record(exec_file, target_offset, target_header, target_next))
+                {
+                    cerr << "Error: failed to read target function at offset " << target_offset << endl;
+                    fclose(exec_file);
+                    return false;
+                }
+
+                vector<Token> target_tokens = tokenize_line(target_header);
+                new_frame.func_name = (target_tokens.size() >= 2) ? target_tokens[1].text : "func";
+                new_frame.argc = arg_count;
+
+                for (int i = 0; i < arg_count && i < max_vars_per_frame; i++)
+                {
+                    string param_name = (i + 2 < (int)target_tokens.size()) ? target_tokens[2 + i].text : ("p" + to_string(i));
+                    new_frame.argv[i].name = param_name;
+                    new_frame.argv[i].value = arg_values[i];
+                    caller_arg_names[current_snapshot.stackDepth][i] = arg_var_names[i];
+                }
+
+                current_snapshot.stackDepth++;
+                current_offset = target_next;
+            }
+            else
+            {
+                current_offset = next_offset;
+            }
+        }
+        else if (cmd_word == "func_end")
+        {
+            if (current_snapshot.stackDepth > 1)
+            {
+                int callee_index = current_snapshot.stackDepth - 1;
+                int caller_index = current_snapshot.stackDepth - 2;
+                Frame &callee = current_snapshot.callStack[callee_index];
+                Frame &caller = current_snapshot.callStack[caller_index];
+
+                for (int i = 0; i < callee.argc; i++)
+                {
+                    string caller_var = caller_arg_names[callee_index][i];
+                    if (!caller_var.empty() && !is_number(caller_var))
+                    {
+                        set_variable(caller, caller_var, callee.argv[i].value);
+                    }
+                }
+
+                int64_t ret_addr = callee.returnLine;
+                current_snapshot.stackDepth--;
+                current_offset = ret_addr;
+            }
+            else
+            {
+                current_snapshot.stackDepth--;
+                current_offset = next_offset;
+            }
+        }
+        else
+        {
+            current_offset = next_offset;
+        }
+
+        timeline_instance.record(&current_snapshot);
+    }
+
+    fclose(exec_file);
+    return true;
+}
+
 int main()
 {
     return 0;
