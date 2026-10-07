@@ -17,11 +17,14 @@ Added `TimelineNode` and `Timeline` doubly-linked list. Added `TTDBHeader`.
 Implemented `validate_structural_integrity()`.
 
 ## Oct 2, 2026 — Session 3 · Stage 2: Resolve binary generation
-Implemented `generate_resolve_bin()` — reads source, writes binary records to `resolve.bin`, tracks pending call patches.
+Implemented `generate_resolve_bin()`.
+
+## Oct 3, 2026 — Session 1 · Patch call addresses
+Implemented `patch_resolve_bin()` — fills in hex addresses for all pending call patches, returns `main` offset.
 
 ---
 
-## Oct 3, 2026 — Session 1
-**Patch call addresses and locate `main`**
+## Oct 3, 2026 — Session 2
+**Tokenizer and variable helper functions**
 
-Implemented `patch_resolve_bin()`. This takes every `PendingPatch` from the previous step, looks up the target function name in the function table, formats the real byte offset as an 18-char hex string, and writes it directly into `resolve.bin` at the right byte position. After patching all calls, it scans for `main` and returns its offset — that's where execution will start.
+Added `tokenize_line()` which splits a text instruction into a list of `Token` objects — first token is the KEYWORD, second is the IDENTIFIER, rest are PARAMs. Added `is_number()` to check if a string is a literal integer. Added `resolve_value()` which looks up a token in a frame's locals or args (or parses it as a literal). Added `set_variable()` which updates or creates a variable in a frame. These utilities are small but get called constantly by the execution engine.

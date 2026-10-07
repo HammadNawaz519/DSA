@@ -363,6 +363,115 @@ int64_t patch_resolve_bin(const string &resolve_path, const vector<FuncEntry> &f
     return main_offset;
 }
 
+vector<Token> tokenize_line(const string &line_text)
+{
+    vector<Token> token_list;
+    stringstream line_stream(line_text);
+    string token_word;
+    int token_idx = 0;
+
+    while (line_stream >> token_word)
+    {
+        Token current_token;
+        current_token.text = token_word;
+        if (token_idx == 0)
+        {
+            current_token.type = KEYWORD;
+        }
+        else if (token_idx == 1)
+        {
+            current_token.type = IDENTIFIER;
+        }
+        else
+        {
+            current_token.type = PARAM;
+        }
+        token_list.push_back(current_token);
+        token_idx++;
+    }
+
+    return token_list;
+}
+
+bool is_number(const string &token_str)
+{
+    if (token_str.empty())
+    {
+        return false;
+    }
+    size_t start_idx = 0;
+    if (token_str[0] == '-' || token_str[0] == '+')
+    {
+        if (token_str.size() == 1)
+        {
+            return false;
+        }
+        start_idx = 1;
+    }
+    for (size_t char_idx = start_idx; char_idx < token_str.size(); char_idx++)
+    {
+        if (!isdigit(token_str[char_idx]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+int32_t resolve_value(const Frame &curr_frame, const string &token_text)
+{
+    if (is_number(token_text))
+    {
+        return atoi(token_text.c_str());
+    }
+
+    for (int32_t var_idx = 0; var_idx < curr_frame.localCount; var_idx++)
+    {
+        if (curr_frame.locals[var_idx].name == token_text)
+        {
+            return curr_frame.locals[var_idx].value;
+        }
+    }
+
+    for (int32_t arg_idx = 0; arg_idx < curr_frame.argc; arg_idx++)
+    {
+        if (curr_frame.argv[arg_idx].name == token_text)
+        {
+            return curr_frame.argv[arg_idx].value;
+        }
+    }
+
+    return 0;
+}
+
+void set_variable(Frame &curr_frame, const string &target_name, int32_t new_val)
+{
+    for (int32_t var_idx = 0; var_idx < curr_frame.localCount; var_idx++)
+    {
+        if (curr_frame.locals[var_idx].name == target_name)
+        {
+            curr_frame.locals[var_idx].value = new_val;
+            return;
+        }
+    }
+
+    for (int32_t arg_idx = 0; arg_idx < curr_frame.argc; arg_idx++)
+    {
+        if (curr_frame.argv[arg_idx].name == target_name)
+        {
+            curr_frame.argv[arg_idx].value = new_val;
+            return;
+        }
+    }
+
+    if (curr_frame.localCount < max_vars_per_frame)
+    {
+        curr_frame.locals[curr_frame.localCount].name = target_name;
+        curr_frame.locals[curr_frame.localCount].value = new_val;
+        curr_frame.localCount++;
+    }
+}
+
 int main()
 {
     return 0;
