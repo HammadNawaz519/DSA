@@ -745,7 +745,46 @@ void writeTdbg(Timeline &timeline, const char *tdbgPath)
     fclose(tdbg_file);
 }
 
-int main()
+int main(int argc, char *argv[])
 {
+    string source_path = "source.bin";
+    if (argc > 1)
+    {
+        source_path = argv[1];
+    }
+    string resolve_path = "resolve.bin";
+    string tdbg_path = "session.tdbg";
+
+    if (!validate_structural_integrity(source_path))
+    {
+        cerr << "Error: validation failed" << endl;
+        return 1;
+    }
+
+    vector<FuncEntry> func_table;
+    vector<PendingPatch> pending_patches;
+    if (!generate_resolve_bin(source_path, resolve_path, func_table, pending_patches))
+    {
+        cerr << "Error: resolve stage failed" << endl;
+        return 1;
+    }
+
+    int64_t main_offset = patch_resolve_bin(resolve_path, func_table, pending_patches);
+    if (main_offset < 0)
+    {
+        cerr << "Error: patching failed" << endl;
+        return 1;
+    }
+
+    Timeline program_timeline;
+    if (!execute_program(resolve_path, main_offset, program_timeline))
+    {
+        cerr << "Error: execution failed" << endl;
+        return 1;
+    }
+
+    writeTdbg(program_timeline, tdbg_path.c_str());
+
+    cout << "Execution completed successfully. Total steps: " << program_timeline.getStepCount() << endl;
     return 0;
 }
